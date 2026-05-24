@@ -24,3 +24,4 @@ Thumbs.db
 
 # Claude Code 内部目录
 .claude/
+.aider*
