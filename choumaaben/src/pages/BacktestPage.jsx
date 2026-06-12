@@ -117,34 +117,30 @@ export default function BacktestPage() {
         </div>
         <InputField
           label="初始资金（元）"
-          type="number"
           step="10000"
           value={initialCapital}
-          onChange={e => setInitialCapital(e.target.value)}
+          onChange={setInitialCapital}
         />
         <InputField
           label="每次交易数量（股）"
-          type="number"
           step="100"
           value={tradeQty}
-          onChange={e => setTradeQty(e.target.value)}
+          onChange={setTradeQty}
         />
 
         {strategy === 'ma' && (
           <>
             <InputField
               label="短期均线天数"
-              type="number"
               step="1"
               value={shortPeriod}
-              onChange={e => setShortPeriod(e.target.value)}
+              onChange={setShortPeriod}
             />
             <InputField
               label="长期均线天数"
-              type="number"
               step="1"
               value={longPeriod}
-              onChange={e => setLongPeriod(e.target.value)}
+              onChange={setLongPeriod}
             />
           </>
         )}
@@ -153,17 +149,15 @@ export default function BacktestPage() {
           <>
             <InputField
               label="买入跌幅阈值（%）"
-              type="number"
               step="0.5"
               value={buyDip}
-              onChange={e => setBuyDip(e.target.value)}
+              onChange={setBuyDip}
             />
             <InputField
               label="卖出涨幅阈值（%）"
-              type="number"
               step="0.5"
               value={sellRise}
-              onChange={e => setSellRise(e.target.value)}
+              onChange={setSellRise}
             />
           </>
         )}
@@ -216,11 +210,15 @@ export default function BacktestPage() {
               <XAxis
                 dataKey="date"
                 tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
-                tickCount={6}
+                interval={Math.max(0, Math.floor((result.dailyValues.length / 6)))}
+                angle={-30}
+                textAnchor="end"
+                height={50}
               />
               <YAxis
                 tick={{ fontSize: 11, fill: 'var(--text-secondary)' }}
                 tickFormatter={v => (v / 10000).toFixed(1) + '万'}
+                domain={['dataMin', 'dataMax']}
               />
               <Tooltip
                 formatter={(v) => [fmtComma(v) + ' 元', '总资产']}
@@ -311,7 +309,7 @@ export default function BacktestPage() {
                           : 'var(--text-secondary)',
                     }}
                   >
-                    {t.type === 'buy' ? '—' : t.profit.toFixed(2)}
+                    {t.type === 'buy' ? '—' : fmtSign(t.profit)}
                   </span>
                 </div>
               ))}
