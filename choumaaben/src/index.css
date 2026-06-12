@@ -324,6 +324,7 @@ body { background: var(--bg); min-height: 100vh; overflow-x: hidden; }
 .banner.info    { background: var(--bg-card); color: var(--text-secondary); border-left: 3px solid var(--border); }
 .banner.warning { background: rgba(230,57,70,0.06); color: var(--up); border-left: 3px solid var(--up); }
 .banner.success { background: rgba(46,204,113,0.06); color: var(--dn); border-left: 3px solid var(--dn); }
+.banner.error { background: rgba(230,57,70,0.10); color: var(--up); border-left: 3px solid var(--up); }
 
 /* ══════════════════════════════════════════════════════
    手续费明细
