@@ -1,14 +1,11 @@
 export default async function handler(req, res) {
-  const pathParts = req.query.path || [];
-  const subPath = Array.isArray(pathParts) ? pathParts.join('/') : pathParts;
-
   const params = new URLSearchParams();
   for (const [k, v] of Object.entries(req.query)) {
-    if (k === 'path') continue;
-    params.append(k, v);
+    if (k === 'path' || k === '...path') continue;
+    params.append(k, Array.isArray(v) ? v[0] : v);
   }
 
-  const target = `https://push2his.eastmoney.com/api/qt/stock/kline/${subPath}?${params.toString()}`;
+  const target = `https://push2his.eastmoney.com/api/qt/stock/kline/get?${params.toString()}`;
 
   try {
     const upstream = await fetch(target, {
@@ -20,7 +17,7 @@ export default async function handler(req, res) {
     });
 
     if (!upstream.ok) {
-      res.status(200).json({ error: `upstream ${upstream.status}`, target, subPath, pathQuery: req.query.path });
+      res.status(upstream.status).json({ error: `upstream ${upstream.status}` });
       return;
     }
 
