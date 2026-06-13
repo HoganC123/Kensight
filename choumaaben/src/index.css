@@ -16,6 +16,7 @@
   --nav-border:   #e8e8e8;
   --up:           #e63946;
   --dn:           #2ecc71;
+  --down:         #2ecc71;
   --btn-bg:       #000000;
   --btn-text:     #ffffff;
 }
@@ -35,6 +36,7 @@ html.dark {
   --nav-border:   #1a1a1a;
   --up:           #e63946;
   --dn:           #2ecc71;
+  --down:         #2ecc71;
   --btn-bg:       #ffffff;
   --btn-text:     #000000;
 }
