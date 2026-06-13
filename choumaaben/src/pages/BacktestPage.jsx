@@ -259,9 +259,14 @@ export default function BacktestPage() {
             }}>
               <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '6px' }}>成交价假设</div>
               <div style={{ marginBottom: '14px' }}>
-                均线策略：金叉信号在次日开盘价建仓（避免用当日收盘价偷看未来）；止损、止盈在触发当日成交，若跳空高/低开则按开盘价计，否则按止损/止盈线计。<br />
-                网格策略：按预设挂单价成交（触及即成交）。<br />
-                定投策略：按当日收盘价买入。<br />
+                {style === 'long' ? (
+                  <>定投策略：按当日收盘价买入。</>
+                ) : strategy === 'ma' ? (
+                  <>均线策略：金叉信号在次日开盘价建仓（避免用当日收盘价偷看未来）；止损、止盈在触发当日成交，若跳空高/低开则按开盘价计，否则按止损/止盈线计。</>
+                ) : strategy === 'grid' ? (
+                  <>网格策略：按预设挂单价成交（触及即成交）。</>
+                ) : null}
+                <br />
                 所有策略均不含日内滑点，实盘成交价通常略差于回测。
               </div>
               <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '6px' }}>交易规则</div>
