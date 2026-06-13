@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/api/eastmoney/:path*",
-      "destination": "https://push2his.eastmoney.com/api/qt/stock/kline/:path*"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
