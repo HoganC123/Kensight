@@ -228,14 +228,16 @@ export function runMACrossover(klines, params = {}) {
         const stopLine = avg * (1 - stopLoss / 100)
         const tpLine = takeProfit > 0 ? avg * (1 + takeProfit / 100) : Infinity
 
-        // 1) 止损优先（用当日最低价判断是否触及）
+        // 1) 止损优先（跳空低开则按开盘价成交，更接近实盘）
         if (k.low <= stopLine) {
-          const t = pos.sellAll(k.date, stopLine)
+          const fillPx = Math.min(k.open, stopLine)
+          const t = pos.sellAll(k.date, fillPx)
           if (t) { t.reason = 'stop'; trades.push(t) }
         }
-        // 2) 止盈
+        // 2) 止盈（跳空高开则按开盘价成交）
         else if (k.high >= tpLine) {
-          const t = pos.sellAll(k.date, tpLine)
+          const fillPx = Math.max(k.open, tpLine)
+          const t = pos.sellAll(k.date, fillPx)
           if (t) { t.reason = 'profit'; trades.push(t) }
         }
         // 3) 死叉清仓
@@ -244,9 +246,10 @@ export function runMACrossover(klines, params = {}) {
           if (t) { t.reason = 'dead'; trades.push(t) }
         }
       }
-      // ── 空仓中：金叉建仓 ──
-      else if (goldCross) {
-        const t = pos.buy(k.date, close, tradeQty)
+      // ── 空仓中：金叉 → 次日开盘价建仓（消除未来函数；最后一天无次日则放弃） ──
+      else if (goldCross && i + 1 < n) {
+        const nk = klines[i + 1]
+        const t = pos.buy(nk.date, nk.open, tradeQty)
         if (t) { t.reason = 'open'; trades.push(t) }
       }
     }

@@ -287,7 +287,7 @@ export default function BacktestPage() {
               <MetricCard label="交易次数" value={`${result.stats.tradeCount} 次`} />
               <MetricCard
                 label="年化收益率"
-                value={`${fmtSign(result.stats.annualReturn)}%`}
+                value={result.dailyValues.length < 60 ? '样本过短' : `${fmtSign(result.stats.annualReturn)}%`}
                 color={result.stats.annualReturn >= 0 ? 'up' : 'down'}
               />
             </div>
