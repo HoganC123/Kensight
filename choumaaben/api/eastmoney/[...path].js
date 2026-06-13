@@ -20,7 +20,7 @@ export default async function handler(req, res) {
     });
 
     if (!upstream.ok) {
-      res.status(upstream.status).json({ error: `upstream ${upstream.status}` });
+      res.status(200).json({ error: `upstream ${upstream.status}`, target, subPath, pathQuery: req.query.path });
       return;
     }
 
