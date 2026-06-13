@@ -16,11 +16,12 @@ export async function fetchKlines(code, startDate, endDate) {
   try {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error('网络请求失败');
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
     res = await response.json();
   } catch (e) {
-    throw new Error('网络请求失败');
+    console.error('[fetchKlines] 请求失败:', url, e);
+    throw new Error(`数据请求失败：${e.message}`);
   }
 
   if (!res || !res.data || !res.data.klines || res.data.klines.length === 0) {
