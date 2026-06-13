@@ -4,6 +4,7 @@ import { runMACrossover, runGridStrategy, runDCA, PRESETS } from '../utils/backt
 import { MetricCard, InputField, Divider, SectionHeading, Banner } from '../components/UI.jsx'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fmtSign, fmtComma } from '../utils/calc.js'
+import { HelpCircle } from 'lucide-react'
 
 /* ────────────────────────────────────────────────
    策略与预设的组织：
@@ -27,8 +28,8 @@ export default function BacktestPage() {
   const [code, setCode] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [initialCapital, setInitialCapital] = useState('100000')
-  const [tradeQty, setTradeQty] = useState('1000')
+  const [initialCapital, setInitialCapital] = useState('')
+  const [tradeQty, setTradeQty] = useState('')
 
   // 均线参数
   const [shortPeriod, setShortPeriod] = useState('5')
@@ -48,6 +49,7 @@ export default function BacktestPage() {
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
   const [showAll, setShowAll] = useState(false)
+  const [showMethod, setShowMethod] = useState(false)
 
   // 切换交易风格时，把参数重置为该风格的预设默认值
   const applyStyle = (id) => {
@@ -200,14 +202,14 @@ export default function BacktestPage() {
         {/* 定投：资金池 + 周期 + 每期金额 */}
         {style === 'long' ? (
           <>
-            <InputField label="资金池上限（元）" value={initialCapital} onChange={setInitialCapital} step="10000" />
+            <InputField label="资金池上限（元）" value={initialCapital} onChange={setInitialCapital} step="10000" placeholder="如 100000" />
             <InputField label="定投周期（交易日）" value={intervalDays} onChange={setIntervalDays} step="1" />
-            <InputField label="每期投入（元）" value={investAmount} onChange={setInvestAmount} step="500" />
+            <InputField label="每期投入（元）" value={investAmount} onChange={setInvestAmount} step="500" placeholder="如 5000" />
           </>
         ) : (
           <>
-            <InputField label="初始资金（元）" value={initialCapital} onChange={setInitialCapital} step="10000" />
-            <InputField label="每次交易数量（股）" value={tradeQty} onChange={setTradeQty} step="100" />
+            <InputField label="初始资金（元）" value={initialCapital} onChange={setInitialCapital} step="10000" placeholder="如 100000" />
+            <InputField label="每次交易数量（股）" value={tradeQty} onChange={setTradeQty} step="100" placeholder="如 1000" />
 
             {strategy === 'ma' && (
               <>
@@ -236,6 +238,44 @@ export default function BacktestPage() {
 
       {result && (
         <>
+          <button
+            onClick={() => setShowMethod(v => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-secondary)', fontSize: '12px',
+              letterSpacing: '0.04em', padding: 0, marginBottom: '16px',
+              fontFamily: 'inherit',
+            }}
+          >
+            <HelpCircle size={14} strokeWidth={1.5} />
+            计算方法
+          </button>
+          {showMethod && (
+            <div style={{
+              background: 'var(--bg-card)', borderRadius: '8px',
+              padding: '20px 24px', marginBottom: '24px',
+              fontSize: '13px', lineHeight: 1.7, color: 'var(--text-secondary)',
+            }}>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '6px' }}>成交价假设</div>
+              <div style={{ marginBottom: '14px' }}>
+                均线策略：金叉信号在次日开盘价建仓（避免用当日收盘价偷看未来）；止损、止盈在触发当日成交，若跳空高/低开则按开盘价计，否则按止损/止盈线计。<br />
+                网格策略：按预设挂单价成交（触及即成交）。<br />
+                定投策略：按当日收盘价买入。<br />
+                所有策略均不含日内滑点，实盘成交价通常略差于回测。
+              </div>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '6px' }}>交易规则</div>
+              <div style={{ marginBottom: '14px' }}>
+                遵循 A 股 T+1：当日买入次日才可卖出。<br />
+                佣金 0.03%、最低 5 元/笔；印花税 0.1%，仅卖出收取。
+              </div>
+              <div style={{ color: 'var(--text-primary)', fontWeight: 500, marginBottom: '6px' }}>重要提示</div>
+              <div>
+                回测基于历史数据，不预示未来表现。历史最优参数往往在实盘失效，请勿据此直接实盘。
+              </div>
+            </div>
+          )}
+
           <SectionHeading>核心指标</SectionHeading>
 
           {isDCA ? (
