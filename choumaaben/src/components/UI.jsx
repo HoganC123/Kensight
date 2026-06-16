@@ -5,7 +5,7 @@ import React, { useState } from 'react'
 ───────────────────────────────────────────── */
 function resolveColor(color) {
   if (color === 'up')      return 'var(--up)'
-  if (color === 'down')    return 'var(--down)'
+  if (color === 'down')    return 'var(--dn)'
   if (color === 'muted')   return 'var(--text-secondary)'
   return 'var(--text-primary)'
 }
@@ -77,7 +77,7 @@ export function CompareCard({ label, isGood, text }) {
       <div style={{
         fontSize: '17px',
         fontWeight: 400,
-        color: isGood ? 'var(--up)' : 'var(--down)',
+        color: isGood ? 'var(--up)' : 'var(--dn)',
         lineHeight: 1.3,
         marginTop: '4px',
       }}>
@@ -144,7 +144,7 @@ export function PctHint({ price, refPrice, labelUp, labelDn }) {
   const pct = (price - refPrice) / refPrice * 100
   const up  = pct >= 0
   return (
-    <div className="pct-hint" style={{ color: up ? 'var(--up)' : 'var(--down)' }}>
+    <div className="pct-hint" style={{ color: up ? 'var(--up)' : 'var(--dn)' }}>
       {up ? '▲' : '▼'} {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%&nbsp;&nbsp;{up ? labelUp : labelDn}
     </div>
   )
@@ -218,7 +218,7 @@ export function FeeDetail({ buyComm, sellComm, stampTax, totalFee, grossProfit }
             &nbsp;−&nbsp;手续费&nbsp;
             <span style={{ color: 'var(--text-primary)' }}>{totalFee.toFixed(2)}</span>
             &nbsp;=&nbsp;税后实际盈利&nbsp;
-            <span style={{ color: net >= 0 ? 'var(--up)' : 'var(--down)', fontWeight: 500 }}>
+            <span style={{ color: net >= 0 ? 'var(--up)' : 'var(--dn)', fontWeight: 500 }}>
               {netSign}{Math.abs(net).toFixed(2)} 元
             </span>
           </div>
