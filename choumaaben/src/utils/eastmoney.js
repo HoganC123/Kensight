@@ -1,4 +1,4 @@
-/** 获取东方财富日K线数据（通过 Vercel 代理） */
+/** 获取东方财富日K线数据（直接请求） */
 export async function fetchKlines(code, startDate, endDate) {
   const firstChar = code.charAt(0);
   let secid;
@@ -10,7 +10,7 @@ export async function fetchKlines(code, startDate, endDate) {
     throw new Error('不支持的股票代码');
   }
 
-  const url = `/api/eastmoney/get?secid=${secid}&klt=101&fqt=1&beg=${startDate}&end=${endDate}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
+  const url = `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&klt=101&fqt=1&beg=${startDate}&end=${endDate}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
 
   let res;
   try {
