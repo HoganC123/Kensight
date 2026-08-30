@@ -25,3 +25,6 @@ Thumbs.db
 # Claude Code 内部目录
 .claude/
 .aider*
+
+# 行情缓存
+.stock_cache/
