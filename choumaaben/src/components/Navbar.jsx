@@ -1,6 +1,6 @@
 import React, { useContext, useState, useEffect, useRef } from 'react'
 import { NavLink } from 'react-router-dom'
-import { Calculator, Target, TrendingUp } from 'lucide-react'
+import { Calculator, Target, TrendingUp, Wallet } from 'lucide-react'
 import { ThemeContext } from '../App.jsx'
 
 const SunIcon = () => (
@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { to: '/',         end: true,  icon: <Calculator size={20} strokeWidth={1.5} />, label: 'T+0' },
   { to: '/position', end: false, icon: <Target     size={20} strokeWidth={1.5} />, label: '仓位' },
   { to: '/backtest', end: false, icon: <TrendingUp size={20} strokeWidth={1.5} />, label: '回测' },
+  { to: '/assets',   end: false, icon: <Wallet     size={20} strokeWidth={1.5} />, label: '资产' },
 ]
 
 export function BottomNav() {
