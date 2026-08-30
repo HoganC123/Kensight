@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import Navbar, { BottomNav } from './components/Navbar.jsx'
-import T0Page from './pages/T0Page.jsx'
-import PositionPage from './pages/PositionPage.jsx'
-import BacktestPage from './pages/BacktestPage.jsx'
-import AssetsPage from './pages/AssetsPage.jsx'
+
+const T0Page       = lazy(() => import('./pages/T0Page.jsx'))
+const PositionPage = lazy(() => import('./pages/PositionPage.jsx'))
+const BacktestPage = lazy(() => import('./pages/BacktestPage.jsx'))
+const AssetsPage   = lazy(() => import('./pages/AssetsPage.jsx'))
+
+function RouteFallback() {
+  return <div style={{ padding: '40px 20px', color: 'var(--text-secondary)' }}>加载中…</div>
+}
 
 export const ThemeContext = React.createContext({ isDark: true, toggle: () => {} })
 
@@ -33,12 +38,14 @@ export default function App() {
           <Navbar />
           <BottomNav />
           <main className="main-content">
-            <Routes>
-              <Route path="/" element={<T0Page />} />
-              <Route path="/position" element={<PositionPage />} />
-              <Route path="/backtest" element={<BacktestPage />} />
-              <Route path="/assets" element={<AssetsPage />} />
-            </Routes>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<T0Page />} />
+                <Route path="/position" element={<PositionPage />} />
+                <Route path="/backtest" element={<BacktestPage />} />
+                <Route path="/assets" element={<AssetsPage />} />
+              </Routes>
+            </Suspense>
           </main>
         </div>
       </BrowserRouter>
