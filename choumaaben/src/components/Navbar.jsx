@@ -122,6 +122,7 @@ export default function Navbar() {
         <NavLink to="/" style={navStyle} end>T+0 计算器</NavLink>
         <NavLink to="/position" style={navStyle}>仓位计算</NavLink>
         <NavLink to="/backtest" style={navStyle}>回测模拟</NavLink>
+        <NavLink to="/assets" style={navStyle}>资产账本</NavLink>
       </nav>
 
       {/* Right: Theme toggle */}
