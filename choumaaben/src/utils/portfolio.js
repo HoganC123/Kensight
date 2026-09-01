@@ -4,8 +4,6 @@
    流水（transactions）只做增量日志，供 XIRR 与决策复盘使用。
 ───────────────────────────────────────────── */
 
-import { bjDate } from './beijing-time.js'
-
 const API = '/api/portfolio'
 
 export const KINDS = ['stock', 'fund', 'metal', 'cash', 'other']
@@ -60,7 +58,8 @@ function normalize(d) {
     accounts:     Array.isArray(d.accounts) && d.accounts.length ? d.accounts : base.accounts,
     holdings:     Array.isArray(d.holdings)     ? d.holdings     : [],
     transactions: Array.isArray(d.transactions) ? d.transactions : [],
-    snapshots:    Array.isArray(d.snapshots)    ? d.snapshots    : []
+    /* 快照机制已移除。字段保留是为了让 data/backups 下含该字段的旧备份仍能加载 */
+    snapshots:    []
   }
 }
 
@@ -167,24 +166,9 @@ export function factorExposure(p) {
     .sort((a, b) => b.value - a.value)
 }
 
-/* ── 每日快照 ─────────────────────────────── */
-
 export function todayStr() {
-  return bjDate()
-}
-
-export function upsertSnapshot(p) {
-  const s = summarize(p)
-  const date = todayStr()
-  const snap = {
-    date,
-    total: Number(s.totalValue.toFixed(2)),
-    cost:  Number(s.totalCost.toFixed(2)),
-    byAccount: s.byAccount,
-    byClass:   s.byClass
-  }
-  const rest = (p.snapshots || []).filter(x => x.date !== date)
-  return { ...p, snapshots: [...rest, snap].sort((a, b) => a.date.localeCompare(b.date)) }
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 /* ── 格式化 ───────────────────────────────── */

@@ -1,23 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
-import { Plus, Trash2, Save, Camera, Copy, RefreshCw } from 'lucide-react'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
+import { Plus, Trash2, Save, Copy, RefreshCw } from 'lucide-react'
 import {
   loadPortfolio, savePortfolio, emptyPortfolio,
-  summarize, upsertSnapshot,
+  summarize,
   holdingValue, holdingPnl, holdingPnlPct,
   newHolding, isAmountKind,
   KINDS, KIND_LABEL, COMMON_FACTORS, FACTOR_LABEL,
   fmtMoney, fmtSigned
 } from '../utils/portfolio.js'
-import { fetchQuotes, isSuspicious } from '../utils/quotes.js'
-import { bjMinutes } from '../utils/beijing-time.js'
+import { fetchQuotes } from '../utils/quotes.js'
 
 const num  = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const wan  = n => (num(n) / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const wanS = n => { const v = num(n) / 10000; return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
-
-/* 15:05（北京）—— 收盘后留 5 分钟给集合竞价数据落定 */
-const SNAPSHOT_AFTER = 905
 
 /* 构图条的明度阶，与全站黑白语言一致 */
 const STEP = [1, 0.62, 0.38, 0.22, 0.12]
@@ -41,7 +37,7 @@ export default function AssetsPage() {
       if (needs && !autoQuoted.current) {
         autoQuoted.current = true
         /* 传 d 进去：此刻闭包里的 data 还是初始空账本 */
-        refreshQuotes({ silent: true, autoPersist: true, base: d })
+        refreshQuotes(true, d)
       }
     })
       .catch(e => setErr(e.message)).finally(() => setLoading(false))
@@ -66,8 +62,6 @@ export default function AssetsPage() {
       .sort((a, b) => b.value - a.value)
   }, [data, s.totalValue])
 
-  const snaps = useMemo(() => [...(data.snapshots || [])].sort((a, b) => a.date.localeCompare(b.date)), [data])
-
   const untagged = (data.holdings || []).filter(h => !Object.keys(h.factors || {}).length)
   const untaggedVal = untagged.reduce((a, h) => a + holdingValue(h), 0)
   const maxPct = factors.length ? factors[0].pct : 0
@@ -84,75 +78,42 @@ export default function AssetsPage() {
   const add    = k  => mutate(d => { d.holdings.push(newHolding(k, d.accounts[0]?.id || 'boc')); return d })
   const remove = id => mutate(d => { d.holdings = d.holdings.filter(x => x.id !== id); return d })
 
-  async function save(snap) {
+  async function save() {
     try {
-      const saved = await savePortfolio(snap ? upsertSnapshot(data) : data)
+      const saved = await savePortfolio(data)
       setData(saved); setDirty(false); setErr('')
-      setMsg(snap ? '已保存，今日快照已记录' : '已保存')
+      setMsg('已保存')
     } catch (e) { setErr(e.message) }
   }
 
-  async function refreshQuotes({ silent = false, autoPersist = false, base = null } = {}) {
-    const src      = base || data
-    const wasDirty = dirty            // 进函数那一刻的脏状态，后面不再变
+  async function refreshQuotes(silent, base) {
+    const src = base || data
     setQuoting(true)
     try {
-      const { results, errors, tradingDay } = await fetchQuotes(src.holdings || [])
-      const bad     = Object.entries(errors || {})
-      const quoteErr = bad.length ? `报价失败：${bad.map(([c, m]) => `${c}(${m})`).join('、')}` : ''
+      const { results, errors } = await fetchQuotes(src.holdings || [])
+      const hit = Object.keys(results || {})
 
-      if (!Object.keys(results || {}).length) {
-        setErr(quoteErr)
-        if (!silent) setMsg('没有可更新的标的')
-        return
-      }
-
-      /* 先在本地把 next 算完整，再一次性 setData。
-         绝不 mutate 之后去读 data —— 那是上一轮的旧值，落盘会写错东西。 */
-      const next    = structuredClone(src)
-      const blocked = []
-      const applied = []
-      for (const h of next.holdings) {
-        const q = results[h.code]
-        if (!q) continue
-        if (isSuspicious(q.price, q.prevClose)) { blocked.push(h.code); continue }
-        h.price = q.price
-        h.priceAsOf = q.asOf
-        h.priceSource = q.source
-        applied.push(h.code)
-      }
-
-      /* 被拦截的行不改 price，但一定要在界面上说出来 */
-      const blockErr = blocked.length
-        ? `价格异常已拦截：${blocked.join('、')}，请人工确认后手动保存`
-        : ''
-      const bothErr = [quoteErr, blockErr].filter(Boolean).join('　')
-
-      const inMemoryOnly = () => {
+      if (hit.length) {
+        /* 先把 next 算完整再一次性 setData，不 mutate 后回读 data */
+        const next = structuredClone(src)
+        let applied = 0
+        for (const h of next.holdings) {
+          const q = results[h.code]
+          if (!q || !Number.isFinite(q.price) || q.price <= 0) continue
+          h.price = q.price
+          h.priceAsOf = q.asOf
+          h.priceSource = q.source
+          applied++
+        }
         setData(next)
-        setErr(bothErr)
-        if (!silent) setMsg(applied.length ? `已更新 ${applied.length} 个标的现价，记得保存` : '没有可更新的标的')
-      }
-
-      /* 按钮点击路径：只改内存、标脏，等用户自己按保存 */
-      if (!autoPersist) {
-        inMemoryOnly()
         setDirty(true)
-        return
+        if (!silent) setMsg(applied ? `已更新 ${applied} 个标的现价，记得保存` : '没有可更新的标的')
+      } else if (!silent) {
+        setMsg('没有可更新的标的')
       }
 
-      /* a. 进来之前就有没存的手工改动 —— 不替用户做落盘决定 */
-      if (wasDirty) { inMemoryOnly(); return }
-
-      /* b. 有拦截 —— 不落盘，留给人工确认 */
-      if (blocked.length) { inMemoryOnly(); setDirty(true); return }
-
-      /* c. 都通过 —— 落盘，收盘后顺带记快照 */
-      const withSnap = tradingDay === true && bjMinutes() >= SNAPSHOT_AFTER
-      const saved = await savePortfolio(withSnap ? upsertSnapshot(next) : next)
-      setData(saved); setDirty(false)
-      setErr(quoteErr)
-      setMsg('已自动更新并写入' + (withSnap ? '，今日快照已记' : ''))
+      const bad = Object.entries(errors || {})
+      setErr(bad.length ? `报价失败：${bad.map(([c, m]) => `${c}(${m})`).join('、')}` : '')
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -179,11 +140,10 @@ export default function AssetsPage() {
             : '尚未写入过'}
         </p>
         <div className="ak-actions">
-          <button className="ak-btn" onClick={() => refreshQuotes({ silent: false, autoPersist: false })} disabled={quoting}>
+          <button className="ak-btn" onClick={() => refreshQuotes(false)} disabled={quoting}>
             <RefreshCw size={13} />{quoting ? '拉取中…' : '刷新报价'}
           </button>
-          <button className="ak-btn ak-btn-solid" onClick={() => save(false)}><Save size={14} />保存</button>
-          <button className="ak-btn" onClick={() => save(true)}><Camera size={13} />保存并记快照</button>
+          <button className="ak-btn ak-btn-solid" onClick={save}><Save size={14} />保存</button>
           <button className="ak-btn" onClick={copyJson}><Copy size={13} />复制 JSON</button>
         </div>
         {err && <div className="banner error ak-banner">{err}</div>}
@@ -244,49 +204,6 @@ export default function AssetsPage() {
           <Donut title="按类别" map={s.byClass} total={s.totalValue} />
           <Donut title="按账户" map={s.byAccount} total={s.totalValue} />
         </div>
-      </section>
-
-      {/* 快照 */}
-      <section className="ak-sec">
-        <div className="ak-sec-head">
-          <h2 className="ak-sec-title">净值曲线<span className="ak-count">{snaps.length} 个快照</span></h2>
-          <span className="ak-quiet">点「保存并记快照」记录当日，每天最多一条</span>
-        </div>
-        {snaps.length === 0 && <p className="ak-quiet">还没有快照。</p>}
-        {snaps.length === 1 && (
-          <p className="ak-note" style={{ margin: 0 }}>
-            只有 {snaps[0].date} 一个快照，总资产 {fmtMoney(snaps[0].total)}。至少两天才画得出曲线。
-          </p>
-        )}
-        {snaps.length >= 2 && (
-          <>
-            <div className="ak-chart">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={snaps} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-                  <CartesianGrid stroke="var(--ak-hair)" vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--ak-dim2)' }}
-                         axisLine={{ stroke: 'var(--ak-line)' }} tickLine={false} />
-                  <YAxis width={54} tick={{ fontSize: 11, fill: 'var(--ak-dim2)' }}
-                         axisLine={false} tickLine={false} domain={['auto', 'auto']}
-                         tickFormatter={v => (v / 10000).toFixed(0) + '万'} />
-                  <Tooltip
-                    formatter={(v, n) => [fmtMoney(v) + ' 元', n === 'total' ? '总资产' : '总成本']}
-                    contentStyle={{ background: 'var(--bg)', border: '1px solid var(--ak-line)', borderRadius: 3, fontSize: 12 }} />
-                  <Line type="monotone" dataKey="cost"  stroke="var(--ak-dim2)" strokeWidth={1}
-                        strokeDasharray="3 3" dot={false} />
-                  <Line type="monotone" dataKey="total" stroke="var(--text-primary)" strokeWidth={1.5}
-                        dot={{ r: 2.5, fill: 'var(--bg)', strokeWidth: 1.5 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="ak-snapdelta">
-              <span>实线为总资产，虚线为总成本</span>
-              <span>
-                较首个快照 {fmtSigned(snaps[snaps.length - 1].total - snaps[0].total)} 元
-              </span>
-            </div>
-          </>
-        )}
       </section>
 
       {/* 持仓 */}
@@ -385,9 +302,7 @@ export default function AssetsPage() {
 
       <p className="footer-note">
         账本只存在本机 <code>data/portfolio.json</code>，不上传任何服务器，每日首次写入前自动备份。<br />
-        股票与场外基金现价自动拉取（东方财富），现金类金额仍需手动更新。<br />
-        交易日 15:05 后首次打开本页会自动记录当日快照，同一天重复打开会覆盖刷新。<br />
-        本页只做记录与计算，不构成投资建议。
+        现价可点「刷新报价」自动拉取（东方财富），其余数据手动维护。所有改动需手动保存。
       </p>
     </div>
   )
@@ -552,13 +467,6 @@ function Style() {
 .ak-donut-center b{ font-size:21px; font-weight:300; letter-spacing:-.02em; color:var(--text-primary); }
 .ak-donut-center i{ font-size:11px; font-style:normal; color:var(--ak-dim2); margin-top:4px; letter-spacing:.06em; }
 
-.ak-chart{ height:240px; margin-top:4px; }
-.ak-snapdelta{
-  display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;
-  font-size:12px; color:var(--ak-dim); margin-top:14px;
-  padding-top:12px; border-top:1px solid var(--ak-hair);
-}
-
 /* 表格 */
 .ak-scroll{ overflow-x:auto; }
 .ak-table{ width:100%; min-width:960px; border-collapse:collapse; table-layout:fixed; }
@@ -624,7 +532,6 @@ function Style() {
   .ak-sec{ padding:38px 0; }
   .ak-splits{ gap:20px; grid-template-columns:1fr; }
   .ak-donut{ height:250px; }
-  .ak-chart{ height:200px; }
   .ak-factor-pct{ font-size:22px; }
 }
 @media (prefers-reduced-motion:reduce){ .ak *{ transition:none !important; } }
