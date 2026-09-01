@@ -58,8 +58,7 @@ function normalize(d) {
     accounts:     Array.isArray(d.accounts) && d.accounts.length ? d.accounts : base.accounts,
     holdings:     Array.isArray(d.holdings)     ? d.holdings     : [],
     transactions: Array.isArray(d.transactions) ? d.transactions : [],
-    /* 快照机制已移除。字段保留是为了让 data/backups 下含该字段的旧备份仍能加载 */
-    snapshots:    []
+    snapshots:    Array.isArray(d.snapshots)    ? d.snapshots    : []
   }
 }
 
@@ -166,6 +165,7 @@ export function factorExposure(p) {
     .sort((a, b) => b.value - a.value)
 }
 
+/* 暂无调用方，快照机制移除后保留，供后续流水表复用 */
 export function todayStr() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
