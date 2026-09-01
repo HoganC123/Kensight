@@ -20,3 +20,19 @@ export async function fetchQuotes(holdings) {
   if (!r.ok) throw new Error(`报价服务不可用 HTTP ${r.status}`)
   return await r.json()
 }
+
+/* ─────────────────────────────────────────────
+   数量级哨兵。阈值 0.31 兜住北交所 30% 涨跌幅：只拦数量级错误，
+   不拦正常行情。基准一定是上游的前收，不能用账本里存的旧价 ——
+   旧价本身可能就是错的，拿它当基准会让正确的新价永远进不来。
+───────────────────────────────────────────── */
+
+export function isSuspicious(price, prevClose) {
+  const p = Number(price)
+  if (!Number.isFinite(p) || p <= 0) return true
+
+  const base = Number(prevClose)
+  if (prevClose === null || prevClose === undefined || !Number.isFinite(base) || base === 0) return false
+
+  return Math.abs(p / base - 1) > 0.31
+}

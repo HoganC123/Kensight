@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { fetchKlines } from './src/utils/eastmoney.js'
+import { bjDate } from './src/utils/beijing-time.js'
 
 /* ─────────────────────────────────────────────
    本地资产账本读写 API（仅 dev 生效，不进产物）
@@ -127,27 +128,21 @@ function withTimeout(promise, ms) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timer))
 }
 
-function todayStamp() {
-  const d = new Date()
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-}
-
 /* 今天往前 15 个自然日，YYYYMMDD */
 function begStamp() {
   const d = new Date(Date.now() - 15 * 24 * 3600 * 1000)
   return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
 }
 
-function todayDash() {
-  const s = todayStamp()
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-}
-
 async function quoteStock(code) {
   const rows = await withTimeout(fetchKlines(code, begStamp(), '20500101'), UPSTREAM_MS)
   if (!Array.isArray(rows) || rows.length === 0) throw new Error('K 线为空')
   const last = rows[rows.length - 1]
-  return { price: last.close, asOf: last.date, source: 'kline', pctChg: last.pctChg }
+  const prev = rows.length >= 2 ? rows[rows.length - 2] : null
+  return {
+    price: last.close, asOf: last.date, source: 'kline', pctChg: last.pctChg,
+    prevClose: prev ? prev.close : null
+  }
 }
 
 /* 主路径：盘中估值接口，返回 jsonpgz({...}); 需要剥壳 */
@@ -165,10 +160,10 @@ async function fundByGz(code) {
   if (!m) throw new Error('返回体不含 jsonpgz')
   const o = JSON.parse(m[1])
 
-  if (o.gsz && String(o.gztime || '').slice(0, 10) === todayDash()) {
-    return { price: Number(o.gsz), asOf: o.gztime, source: 'gz', pctChg: Number(o.gszzl) }
+  if (o.gsz && String(o.gztime || '').slice(0, 10) === bjDate()) {
+    return { price: Number(o.gsz), asOf: o.gztime, source: 'gz', pctChg: Number(o.gszzl), prevClose: null }
   }
-  return { price: Number(o.dwjz), asOf: o.jzrq, source: 'nav', pctChg: null }
+  return { price: Number(o.dwjz), asOf: o.jzrq, source: 'nav', pctChg: null, prevClose: null }
 }
 
 /* 回退路径：历史净值接口，Referer 不对会被直接拒 */
@@ -184,7 +179,7 @@ async function fundByLsjz(code) {
   const j = await r.json()
   const row = j && j.Data && Array.isArray(j.Data.LSJZList) ? j.Data.LSJZList[0] : null
   if (!row) throw new Error('历史净值为空')
-  return { price: Number(row.DWJZ), asOf: row.FSRQ, source: 'nav', pctChg: null }
+  return { price: Number(row.DWJZ), asOf: row.FSRQ, source: 'nav', pctChg: null, prevClose: null }
 }
 
 async function quoteFund(code) {
@@ -237,7 +232,15 @@ function quotesApi() {
         })
 
         await Promise.all(jobs)
-        res.end(JSON.stringify({ results, errors }))
+
+        /* 用 any 不用 all：停牌股的 K 线会停在旧日期，
+           不能让它把整体判成非交易日 */
+        const today = bjDate()
+        const tradingDay = stocks.length === 0
+          ? null
+          : stocks.some(c => results[c] && results[c].asOf === today)
+
+        res.end(JSON.stringify({ results, errors, tradingDay }))
       })
     }
   }

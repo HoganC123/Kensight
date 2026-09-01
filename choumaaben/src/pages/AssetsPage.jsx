@@ -9,11 +9,15 @@ import {
   KINDS, KIND_LABEL, COMMON_FACTORS, FACTOR_LABEL,
   fmtMoney, fmtSigned
 } from '../utils/portfolio.js'
-import { fetchQuotes } from '../utils/quotes.js'
+import { fetchQuotes, isSuspicious } from '../utils/quotes.js'
+import { bjMinutes } from '../utils/beijing-time.js'
 
 const num  = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const wan  = n => (num(n) / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const wanS = n => { const v = num(n) / 10000; return (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+
+/* 15:05（北京）—— 收盘后留 5 分钟给集合竞价数据落定 */
+const SNAPSHOT_AFTER = 905
 
 /* 构图条的明度阶，与全站黑白语言一致 */
 const STEP = [1, 0.62, 0.38, 0.22, 0.12]
@@ -37,7 +41,7 @@ export default function AssetsPage() {
       if (needs && !autoQuoted.current) {
         autoQuoted.current = true
         /* 传 d 进去：此刻闭包里的 data 还是初始空账本 */
-        refreshQuotes(true, d)
+        refreshQuotes({ silent: true, autoPersist: true, base: d })
       }
     })
       .catch(e => setErr(e.message)).finally(() => setLoading(false))
@@ -87,27 +91,68 @@ export default function AssetsPage() {
       setMsg(snap ? '已保存，今日快照已记录' : '已保存')
     } catch (e) { setErr(e.message) }
   }
-  async function refreshQuotes(silent, base) {
-    const src = base || data
+
+  async function refreshQuotes({ silent = false, autoPersist = false, base = null } = {}) {
+    const src      = base || data
+    const wasDirty = dirty            // 进函数那一刻的脏状态，后面不再变
     setQuoting(true)
     try {
-      const { results, errors } = await fetchQuotes(src.holdings || [])
-      const hit = Object.keys(results || {})
-      if (hit.length) {
-        mutate(d => {
-          for (const h of d.holdings) {
-            const q = results[h.code]
-            if (!q || !Number.isFinite(q.price) || q.price <= 0) continue
-            h.price = q.price
-            h.priceAsOf = q.asOf
-            h.priceSource = q.source
-          }
-          return d
-        })
+      const { results, errors, tradingDay } = await fetchQuotes(src.holdings || [])
+      const bad     = Object.entries(errors || {})
+      const quoteErr = bad.length ? `报价失败：${bad.map(([c, m]) => `${c}(${m})`).join('、')}` : ''
+
+      if (!Object.keys(results || {}).length) {
+        setErr(quoteErr)
+        if (!silent) setMsg('没有可更新的标的')
+        return
       }
-      const bad = Object.entries(errors || {})
-      setErr(bad.length ? `报价失败：${bad.map(([c, m]) => `${c}(${m})`).join('、')}` : '')
-      if (!silent) setMsg(hit.length ? `已更新 ${hit.length} 个标的现价，记得保存` : '没有可更新的标的')
+
+      /* 先在本地把 next 算完整，再一次性 setData。
+         绝不 mutate 之后去读 data —— 那是上一轮的旧值，落盘会写错东西。 */
+      const next    = structuredClone(src)
+      const blocked = []
+      const applied = []
+      for (const h of next.holdings) {
+        const q = results[h.code]
+        if (!q) continue
+        if (isSuspicious(q.price, q.prevClose)) { blocked.push(h.code); continue }
+        h.price = q.price
+        h.priceAsOf = q.asOf
+        h.priceSource = q.source
+        applied.push(h.code)
+      }
+
+      /* 被拦截的行不改 price，但一定要在界面上说出来 */
+      const blockErr = blocked.length
+        ? `价格异常已拦截：${blocked.join('、')}，请人工确认后手动保存`
+        : ''
+      const bothErr = [quoteErr, blockErr].filter(Boolean).join('　')
+
+      const inMemoryOnly = () => {
+        setData(next)
+        setErr(bothErr)
+        if (!silent) setMsg(applied.length ? `已更新 ${applied.length} 个标的现价，记得保存` : '没有可更新的标的')
+      }
+
+      /* 按钮点击路径：只改内存、标脏，等用户自己按保存 */
+      if (!autoPersist) {
+        inMemoryOnly()
+        setDirty(true)
+        return
+      }
+
+      /* a. 进来之前就有没存的手工改动 —— 不替用户做落盘决定 */
+      if (wasDirty) { inMemoryOnly(); return }
+
+      /* b. 有拦截 —— 不落盘，留给人工确认 */
+      if (blocked.length) { inMemoryOnly(); setDirty(true); return }
+
+      /* c. 都通过 —— 落盘，收盘后顺带记快照 */
+      const withSnap = tradingDay === true && bjMinutes() >= SNAPSHOT_AFTER
+      const saved = await savePortfolio(withSnap ? upsertSnapshot(next) : next)
+      setData(saved); setDirty(false)
+      setErr(quoteErr)
+      setMsg('已自动更新并写入' + (withSnap ? '，今日快照已记' : ''))
     } catch (e) {
       setErr(e.message)
     } finally {
@@ -134,7 +179,7 @@ export default function AssetsPage() {
             : '尚未写入过'}
         </p>
         <div className="ak-actions">
-          <button className="ak-btn" onClick={() => refreshQuotes(false)} disabled={quoting}>
+          <button className="ak-btn" onClick={() => refreshQuotes({ silent: false, autoPersist: false })} disabled={quoting}>
             <RefreshCw size={13} />{quoting ? '拉取中…' : '刷新报价'}
           </button>
           <button className="ak-btn ak-btn-solid" onClick={() => save(false)}><Save size={14} />保存</button>
@@ -340,7 +385,9 @@ export default function AssetsPage() {
 
       <p className="footer-note">
         账本只存在本机 <code>data/portfolio.json</code>，不上传任何服务器，每日首次写入前自动备份。<br />
-        股票与场外基金现价自动拉取（东方财富），现金类金额仍需手动更新。本页只做记录与计算，不构成投资建议。
+        股票与场外基金现价自动拉取（东方财富），现金类金额仍需手动更新。<br />
+        交易日 15:05 后首次打开本页会自动记录当日快照，同一天重复打开会覆盖刷新。<br />
+        本页只做记录与计算，不构成投资建议。
       </p>
     </div>
   )

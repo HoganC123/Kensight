@@ -4,6 +4,8 @@
    流水（transactions）只做增量日志，供 XIRR 与决策复盘使用。
 ───────────────────────────────────────────── */
 
+import { bjDate } from './beijing-time.js'
+
 const API = '/api/portfolio'
 
 export const KINDS = ['stock', 'fund', 'metal', 'cash', 'other']
@@ -168,8 +170,7 @@ export function factorExposure(p) {
 /* ── 每日快照 ─────────────────────────────── */
 
 export function todayStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return bjDate()
 }
 
 export function upsertSnapshot(p) {
