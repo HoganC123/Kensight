@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { PieChart, Pie, Cell, ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
-import { Plus, Trash2, Save, Camera, Copy } from 'lucide-react'
+import { Plus, Trash2, Save, Camera, Copy, RefreshCw } from 'lucide-react'
 import {
   loadPortfolio, savePortfolio, emptyPortfolio,
   summarize, upsertSnapshot,
@@ -9,6 +9,7 @@ import {
   KINDS, KIND_LABEL, COMMON_FACTORS, FACTOR_LABEL,
   fmtMoney, fmtSigned
 } from '../utils/portfolio.js'
+import { fetchQuotes } from '../utils/quotes.js'
 
 const num  = v => (Number.isFinite(Number(v)) ? Number(v) : 0)
 const wan  = n => (num(n) / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -24,9 +25,21 @@ export default function AssetsPage() {
   const [msg, setMsg]           = useState('')
   const [err, setErr]           = useState('')
   const [expanded, setExpanded] = useState(null)
+  const [quoting, setQuoting]   = useState(false)
+
+  /* StrictMode 下 effect 会跑两次，用 ref 挡住第二次自动拉取 */
+  const autoQuoted = useRef(false)
 
   useEffect(() => {
-    loadPortfolio().then(d => { setData(d); setErr('') })
+    loadPortfolio().then(d => {
+      setData(d); setErr('')
+      const needs = (d.holdings || []).some(h => (h.kind === 'stock' || h.kind === 'fund') && h.code && String(h.code).trim())
+      if (needs && !autoQuoted.current) {
+        autoQuoted.current = true
+        /* 传 d 进去：此刻闭包里的 data 还是初始空账本 */
+        refreshQuotes(true, d)
+      }
+    })
       .catch(e => setErr(e.message)).finally(() => setLoading(false))
   }, [])
 
@@ -74,6 +87,34 @@ export default function AssetsPage() {
       setMsg(snap ? '已保存，今日快照已记录' : '已保存')
     } catch (e) { setErr(e.message) }
   }
+  async function refreshQuotes(silent, base) {
+    const src = base || data
+    setQuoting(true)
+    try {
+      const { results, errors } = await fetchQuotes(src.holdings || [])
+      const hit = Object.keys(results || {})
+      if (hit.length) {
+        mutate(d => {
+          for (const h of d.holdings) {
+            const q = results[h.code]
+            if (!q || !Number.isFinite(q.price) || q.price <= 0) continue
+            h.price = q.price
+            h.priceAsOf = q.asOf
+            h.priceSource = q.source
+          }
+          return d
+        })
+      }
+      const bad = Object.entries(errors || {})
+      setErr(bad.length ? `报价失败：${bad.map(([c, m]) => `${c}(${m})`).join('、')}` : '')
+      if (!silent) setMsg(hit.length ? `已更新 ${hit.length} 个标的现价，记得保存` : '没有可更新的标的')
+    } catch (e) {
+      setErr(e.message)
+    } finally {
+      setQuoting(false)
+    }
+  }
+
   async function copyJson() {
     try { await navigator.clipboard.writeText(JSON.stringify(data, null, 2)); setMsg('账本 JSON 已复制') }
     catch (e) { setErr('复制失败：' + e.message) }
@@ -93,6 +134,9 @@ export default function AssetsPage() {
             : '尚未写入过'}
         </p>
         <div className="ak-actions">
+          <button className="ak-btn" onClick={() => refreshQuotes(false)} disabled={quoting}>
+            <RefreshCw size={13} />{quoting ? '拉取中…' : '刷新报价'}
+          </button>
           <button className="ak-btn ak-btn-solid" onClick={() => save(false)}><Save size={14} />保存</button>
           <button className="ak-btn" onClick={() => save(true)}><Camera size={13} />保存并记快照</button>
           <button className="ak-btn" onClick={copyJson}><Copy size={13} />复制 JSON</button>
@@ -250,7 +294,16 @@ export default function AssetsPage() {
                       <td><Pick value={h.kind} onChange={v => update(h.id, { kind: v })} options={KINDS.map(k => [k, KIND_LABEL[k]])} /></td>
                       <td className="r"><Edit type="number" align="right" value={amt ? h.amount : h.qty} onChange={v => update(h.id, amt ? { amount: v } : { qty: v })} /></td>
                       <td className="r">{amt ? <i className="ak-dash">—</i> : <Edit type="number" align="right" value={h.cost} onChange={v => update(h.id, { cost: v })} />}</td>
-                      <td className="r">{amt ? <i className="ak-dash">—</i> : <Edit type="number" align="right" value={h.price} onChange={v => update(h.id, { price: v })} />}</td>
+                      <td className="r">{amt ? <i className="ak-dash">—</i> : (
+                        <div className="ak-price">
+                          <Edit type="number" align="right" value={h.price} onChange={v => update(h.id, { price: v })} />
+                          {h.priceAsOf && (
+                            <span className="ak-src" title={`${h.priceSource === 'gz' ? '盘中估值' : h.priceSource === 'nav' ? '基金净值' : '日K收盘'} · ${h.priceAsOf}`}>
+                              {h.priceAsOf.slice(5, 10)}
+                            </span>
+                          )}
+                        </div>
+                      )}</td>
                       <td className="r ak-val">{fmtMoney(holdingValue(h))}</td>
                       <td className={`r ${amt ? 'ak-dash' : pnl >= 0 ? 'ak-up' : 'ak-dn'}`}>
                         {amt ? '—' : <>{fmtSigned(pnl)}<span className="ak-pct">{holdingPnlPct(h).toFixed(2)}%</span></>}
@@ -287,7 +340,7 @@ export default function AssetsPage() {
 
       <p className="footer-note">
         账本只存在本机 <code>data/portfolio.json</code>，不上传任何服务器，每日首次写入前自动备份。<br />
-        现价与金额需手动更新。本页只做记录与计算，不构成投资建议。
+        股票与场外基金现价自动拉取（东方财富），现金类金额仍需手动更新。本页只做记录与计算，不构成投资建议。
       </p>
     </div>
   )
@@ -482,6 +535,9 @@ function Style() {
   color:var(--text-primary); font-family:inherit; font-size:13px; padding:2px 0;
   outline:none; font-variant-numeric:tabular-nums; width:100%;
 }
+.ak-price{ display:flex; align-items:baseline; justify-content:flex-end; gap:0; }
+.ak-price .ak-input{ flex:1 1 auto; min-width:0; }
+.ak-src{ font-size:10px; color:var(--ak-dim2); margin-left:5px; white-space:nowrap; cursor:help; }
 .ak-input.small{ font-size:11px; color:var(--ak-dim); }
 .ak-input:hover{ border-bottom-color:var(--ak-line); }
 .ak-input:focus{ border-bottom-color:var(--text-primary); }
